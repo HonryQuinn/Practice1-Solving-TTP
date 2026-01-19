@@ -1,4 +1,4 @@
-#include "ttp_reader.h"
+#include "reader.cpp"
 #include <iostream>
 #include <vector>
 #include <algorithm>

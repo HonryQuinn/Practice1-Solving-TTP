@@ -29,14 +29,12 @@ struct TTPInstance {
     vector<Item> items;                   // items disponibles
 };
 
-// Calcula la distancia euclidiana con techo (CEIL_2D)
 double calculateDistance(double x1, double y1, double x2, double y2) {
     double dx = x1 - x2;
     double dy = y1 - y2;
     return ceil(sqrt(dx * dx + dy * dy));
 }
 
-// Lee un archivo .ttp y carga toda la información
 bool readTTPFile(const string& filename, TTPInstance& instance) {
     ifstream file(filename);
     if (!file.is_open()) {
@@ -46,7 +44,7 @@ bool readTTPFile(const string& filename, TTPInstance& instance) {
     
     string line;
     
-    // Leer cabecera
+    // leer características
     while (getline(file, line)) {
         if (line.find("PROBLEM NAME:") != string::npos) {
             instance.name = line.substr(line.find(":") + 1);
@@ -74,7 +72,7 @@ bool readTTPFile(const string& filename, TTPInstance& instance) {
         }
     }
     
-    // Leer coordenadas de nodos
+    // coordenadas de nodos
     instance.coords.resize(instance.dimension);
     for (int i = 0; i < instance.dimension; i++) {
         int idx;
@@ -83,7 +81,7 @@ bool readTTPFile(const string& filename, TTPInstance& instance) {
         instance.coords[i] = {x, y};
     }
     
-    // Calcular matriz de distancias
+    // calcular matriz de distancias
     instance.distances.resize(instance.dimension, vector<double>(instance.dimension, 0.0));
     for (int i = 0; i < instance.dimension; i++) {
         for (int j = 0; j < instance.dimension; j++) {
@@ -96,26 +94,25 @@ bool readTTPFile(const string& filename, TTPInstance& instance) {
         }
     }
     
-    // Buscar sección de items
+    // buscar sección de items
     while (getline(file, line)) {
         if (line.find("ITEMS SECTION") != string::npos) {
             break;
         }
     }
     
-    // Leer items
+    // leer las características de cada ítem
     instance.items.resize(instance.num_items);
     for (int i = 0; i < instance.num_items; i++) {
         int idx;
         file >> idx >> instance.items[i].profit >> instance.items[i].weight >> instance.items[i].node;
-        instance.items[i].node--;  // Convertir a 0-indexed
+        instance.items[i].node--;  
     }
     
     file.close();
     return true;
 }
 
-// Imprime información de la instancia
 void printInstanceInfo(const TTPInstance& instance) {
     cout << "=== Información de la Instancia TTP ===" << endl;
     cout << "Nombre: " << instance.name << endl;
@@ -138,33 +135,33 @@ void printInstanceInfo(const TTPInstance& instance) {
     }
 }
 
-// Función para calcular la función objetivo del TTP
+// función para calcular la función objetivo del TTP
 double calculateObjective(const TTPInstance& inst, const vector<int>& tour, const vector<int>& pickingPlan) {
     double totalProfit = 0.0;
     double totalTime = 0.0;
     int currentWeight = 0;
     
-    // Calcular ganancia total
+    // calcular ganancia total
     for (int i = 0; i < inst.num_items; i++) {
         if (pickingPlan[i] == 1) {
             totalProfit += inst.items[i].profit;
         }
     }
     
-    // Calcular tiempo total del viaje
+    // calcular tiempo total del viaje
     double nu = (inst.max_speed - inst.min_speed) / inst.capacity;
     
     for (int i = 0; i < inst.dimension; i++) {
         int from = tour[i];
         int to = tour[(i + 1) % inst.dimension];
         
-        // Velocidad actual basada en el peso
+        // velocidad actual basada en el peso
         double velocity = inst.max_speed - nu * currentWeight;
         
-        // Tiempo para este segmento
+        // tiempo para este segmento
         totalTime += inst.distances[from][to] / velocity;
         
-        // Actualizar peso después de visitar 'to'
+        // actualizar peso después de visitar 'to'
         for (int k = 0; k < inst.num_items; k++) {
             if (pickingPlan[k] == 1 && inst.items[k].node == to) {
                 currentWeight += inst.items[k].weight;
@@ -172,8 +169,8 @@ double calculateObjective(const TTPInstance& inst, const vector<int>& tour, cons
         }
     }
     
-    // Objetivo = ganancia - costo de alquiler
+    // objetivo = ganancia - costo de alquiler
     return totalProfit - totalTime * inst.renting_ratio;
 }
 
-#endif // TTP_READER_H
+#endif 
