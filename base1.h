@@ -1,169 +1,211 @@
+#ifndef TTP_BASE_H
+#define TTP_BASE_H
+
 #include "reader.cpp"
-#include <iostream>
 #include <vector>
+#include <string>
+#include <limits>
 #include <algorithm>
+
 using namespace std;
 
-// ========================================
-// AQUÍ IMPLEMENTAS TUS HEURÍSTICAS GREEDY
-// ========================================
+// Estructura para almacenar una solución del TTP
+struct TTPSolution {
+    vector<int> tour;           // orden de visita de ciudades
+    vector<int> pickingPlan;    // 1 si se recoge el item i, 0 si no
+    double objective;           // valor de la función objetivo
+    double profit;              // ganancia total
+    double time;                // tiempo total
+    int weight;                 // peso total recogido
+    
+    TTPSolution() : objective(-numeric_limits<double>::infinity()), 
+                    profit(0), time(0), weight(0) {}
+    
+    bool isValid(const TTPInstance& inst) const {
+        return weight <= inst.capacity && tour.size() == inst.dimension;
+    }
+};
 
-// Ejemplo 1: Tour greedy usando vecino más cercano
-vector<int> greedyNearestNeighbor(const TTPInstance& inst) {
-    vector<int> tour;
-    vector<bool> visited(inst.dimension, false);
+// Clase base abstracta para heurísticas
+class TTPHeuristic {
+protected:
+    const TTPInstance& instance;
     
-    int current = 0;  // Empezar en la ciudad 0
-    tour.push_back(current);
-    visited[current] = true;
+public:
+    TTPHeuristic(const TTPInstance& inst) : instance(inst) {}
+    virtual ~TTPHeuristic() {}
     
-    for (int step = 1; step < inst.dimension; step++) {
-        double minDist = 1e9;
-        int nearest = -1;
+    // Método principal que debe implementar cada heurística
+    virtual TTPSolution solve() = 0;
+    
+    // Nombre de la heurística (para reportes)
+    virtual string getName() const = 0;
+    
+    // Método auxiliar para evaluar una solución
+    void evaluateSolution(TTPSolution& sol) {
+        sol.profit = 0.0;
+        sol.time = 0.0;
+        sol.weight = 0;
         
-        // Buscar la ciudad más cercana no visitada
-        for (int j = 0; j < inst.dimension; j++) {
-            if (!visited[j] && inst.distances[current][j] < minDist) {
-                minDist = inst.distances[current][j];
-                nearest = j;
+        // Calcular ganancia y peso total
+        for (int i = 0; i < instance.num_items; i++) {
+            if (sol.pickingPlan[i] == 1) {
+                sol.profit += instance.items[i].profit;
+                sol.weight += instance.items[i].weight;
             }
         }
         
-        current = nearest;
+        // Calcular tiempo total del viaje
+        double nu = (instance.max_speed - instance.min_speed) / instance.capacity;
+        int currentWeight = 0;
+        
+        for (int i = 0; i < instance.dimension; i++) {
+            int from = sol.tour[i];
+            int to = sol.tour[(i + 1) % instance.dimension];
+            
+            double velocity = instance.max_speed - nu * currentWeight;
+            sol.time += instance.distances[from][to] / velocity;
+            
+            // Actualizar peso después de visitar 'to'
+            for (int k = 0; k < instance.num_items; k++) {
+                if (sol.pickingPlan[k] == 1 && instance.items[k].node == to) {
+                    currentWeight += instance.items[k].weight;
+                }
+            }
+        }
+        
+        sol.objective = sol.profit - sol.time * instance.renting_ratio;
+    }
+    
+    // Crear tour inicial (por ejemplo, secuencial)
+    vector<int> createSequentialTour() {
+        vector<int> tour(instance.dimension);
+        for (int i = 0; i < instance.dimension; i++) {
+            tour[i] = i;
+        }
+        return tour;
+    }
+    
+    // Crear tour aleatorio
+    vector<int> createRandomTour() {
+        vector<int> tour = createSequentialTour();
+        random_shuffle(tour.begin() + 1, tour.end()); // mantener ciudad 0 al inicio
+        return tour;
+    }
+    
+    // Crear tour usando vecino más cercano
+    vector<int> createNearestNeighborTour(int start = 0) {
+        vector<int> tour;
+        vector<bool> visited(instance.dimension, false);
+        
+        int current = start;
         tour.push_back(current);
         visited[current] = true;
+        
+        for (int i = 1; i < instance.dimension; i++) {
+            double minDist = numeric_limits<double>::infinity();
+            int nearest = -1;
+            
+            for (int j = 0; j < instance.dimension; j++) {
+                if (!visited[j] && instance.distances[current][j] < minDist) {
+                    minDist = instance.distances[current][j];
+                    nearest = j;
+                }
+            }
+            
+            tour.push_back(nearest);
+            visited[nearest] = true;
+            current = nearest;
+        }
+        
+        return tour;
     }
     
-    return tour;
-}
+    // Picking plan vacío (no recoger nada)
+    vector<int> createEmptyPickingPlan() {
+        return vector<int>(instance.num_items, 0);
+    }
+    
+    // Picking plan greedy basado en profit/weight ratio
+    vector<int> createGreedyPickingPlan(const vector<int>& tour) {
+        vector<int> pickingPlan(instance.num_items, 0);
+        
+        // Crear lista de items ordenados por ratio profit/weight
+        vector<pair<double, int>> itemRatios;
+        for (int i = 0; i < instance.num_items; i++) {
+            double ratio = (double)instance.items[i].profit / instance.items[i].weight;
+            itemRatios.push_back({ratio, i});
+        }
+        sort(itemRatios.rbegin(), itemRatios.rend());
+        
+        // Seleccionar items mientras haya capacidad
+        int currentWeight = 0;
+        for (auto& p : itemRatios) {
+            int itemIdx = p.second;
+            if (currentWeight + instance.items[itemIdx].weight <= instance.capacity) {
+                pickingPlan[itemIdx] = 1;
+                currentWeight += instance.items[itemIdx].weight;
+            }
+        }
+        
+        return pickingPlan;
+    }
+};
 
-// Ejemplo 2: Selección greedy de items por ratio profit/weight
-vector<int> greedyKnapsackByRatio(const TTPInstance& inst, const vector<int>& tour) {
-    vector<int> pickingPlan(inst.num_items, 0);
+// Clase para gestionar experimentos con múltiples heurísticas
+class TTPExperiment {
+private:
+    const TTPInstance& instance;
+    vector<TTPHeuristic*> heuristics;
     
-    // Crear vector de índices de items ordenados por ratio profit/weight
-    vector<pair<double, int>> ratios;
-    for (int i = 0; i < inst.num_items; i++) {
-        double ratio = (double)inst.items[i].profit / inst.items[i].weight;
-        ratios.push_back({ratio, i});
-    }
+public:
+    TTPExperiment(const TTPInstance& inst) : instance(inst) {}
     
-    // Ordenar de mayor a menor ratio
-    sort(ratios.begin(), ratios.end(), greater<pair<double, int>>());
-    
-    // Seleccionar items mientras no se exceda la capacidad
-    int currentWeight = 0;
-    for (auto& p : ratios) {
-        int itemIdx = p.second;
-        if (currentWeight + inst.items[itemIdx].weight <= inst.capacity) {
-            pickingPlan[itemIdx] = 1;
-            currentWeight += inst.items[itemIdx].weight;
+    ~TTPExperiment() {
+        for (auto h : heuristics) {
+            delete h;
         }
     }
     
-    return pickingPlan;
-}
-
-// Ejemplo 3: Selección greedy solo por profit
-vector<int> greedyKnapsackByProfit(const TTPInstance& inst, const vector<int>& tour) {
-    vector<int> pickingPlan(inst.num_items, 0);
-    
-    vector<pair<int, int>> profits;
-    for (int i = 0; i < inst.num_items; i++) {
-        profits.push_back({inst.items[i].profit, i});
+    void addHeuristic(TTPHeuristic* heuristic) {
+        heuristics.push_back(heuristic);
     }
     
-    sort(profits.begin(), profits.end(), greater<pair<int, int>>());
-    
-    int currentWeight = 0;
-    for (auto& p : profits) {
-        int itemIdx = p.second;
-        if (currentWeight + inst.items[itemIdx].weight <= inst.capacity) {
-            pickingPlan[itemIdx] = 1;
-            currentWeight += inst.items[itemIdx].weight;
+    void runAll() {
+        cout << "  EJECUTANDO EXPERIMENTOS TTP" << endl;
+        cout << "Instancia: " << instance.name << endl;
+        cout << "Ciudades: " << instance.dimension << endl;
+        cout << "Items: " << instance.num_items << endl;
+        cout << "Capacidad: " << instance.capacity << endl;
+        
+        TTPSolution bestSolution;
+        string bestHeuristic;
+        
+        for (auto heuristic : heuristics) {
+            cout << "► Ejecutando: " << heuristic->getName() << endl;
+            
+            TTPSolution solution = heuristic->solve();
+            
+            cout << "  Objetivo: " << solution.objective << endl;
+            cout << "  Ganancia: " << solution.profit << endl;
+            cout << "  Tiempo: " << solution.time << endl;
+            cout << "  Peso usado: " << solution.weight << "/" << instance.capacity << endl;
+            cout << "  Válida: " << (solution.isValid(instance) ? "Sí" : "No") << endl;
+            cout << endl;
+            
+            if (solution.objective > bestSolution.objective) {
+                bestSolution = solution;
+                bestHeuristic = heuristic->getName();
+            }
         }
+        
+        cout << "  MEJOR SOLUCIÓN ENCONTRADA" << endl;
+        cout << "Heurística: " << bestHeuristic << endl;
+        cout << "Objetivo: " << bestSolution.objective << endl;
+        cout << "Ganancia: " << bestSolution.profit << endl;
+        cout << "Tiempo: " << bestSolution.time << endl;
+        cout << "Peso: " << bestSolution.weight << endl;
     }
-    
-    return pickingPlan;
-}
+};
 
-// Función auxiliar para imprimir solución
-void printSolution(const TTPInstance& inst, const vector<int>& tour, 
-                   const vector<int>& pickingPlan, const string& name) {
-    cout << "\n=== " << name << " ===" << endl;
-    
-    // Mostrar tour
-    cout << "Tour: ";
-    for (int i = 0; i < min(10, (int)tour.size()); i++) {
-        cout << tour[i] << " ";
-    }
-    if (tour.size() > 10) cout << "...";
-    cout << endl;
-    
-    // Contar items seleccionados
-    int itemsSelected = 0;
-    int totalWeight = 0;
-    int totalProfit = 0;
-    for (int i = 0; i < inst.num_items; i++) {
-        if (pickingPlan[i] == 1) {
-            itemsSelected++;
-            totalWeight += inst.items[i].weight;
-            totalProfit += inst.items[i].profit;
-        }
-    }
-    
-    cout << "Items seleccionados: " << itemsSelected << "/" << inst.num_items << endl;
-    cout << "Peso total: " << totalWeight << "/" << inst.capacity << endl;
-    cout << "Ganancia total: " << totalProfit << endl;
-    
-    // Calcular objetivo
-    double objective = calculateObjective(inst, tour, pickingPlan);
-    cout << "Función objetivo: " << objective << endl;
-}
-
-// ========================================
-// MAIN - PROBAR TUS ALGORITMOS
-// ========================================
-
-int main() {
-    TTPInstance instance;
-    
-    // Leer archivo TTP
-    string filename = "eil76-TTP.ttp";
-    cout << "Leyendo archivo: " << filename << endl;
-    
-    if (!readTTPFile(filename, instance)) {
-        return 1;
-    }
-    
-    // Mostrar información de la instancia
-    printInstanceInfo(instance);
-    
-    cout << "\n" << string(50, '=') << endl;
-    cout << "PROBANDO ALGORITMOS GREEDY" << endl;
-    cout << string(50, '=') << endl;
-    
-    // Probar diferentes combinaciones
-    
-    // 1. Tour greedy + selección por ratio
-    vector<int> tour1 = greedyNearestNeighbor(instance);
-    vector<int> picking1 = greedyKnapsackByRatio(instance, tour1);
-    printSolution(instance, tour1, picking1, "Vecino Más Cercano + Ratio P/W");
-    
-    // 2. Tour greedy + selección por profit
-    vector<int> tour2 = greedyNearestNeighbor(instance);
-    vector<int> picking2 = greedyKnapsackByProfit(instance, tour2);
-    printSolution(instance, tour2, picking2, "Vecino Más Cercano + Mayor Profit");
-    
-    // 3. Tour simple + selección por ratio
-    vector<int> tour3(instance.dimension);
-    for (int i = 0; i < instance.dimension; i++) tour3[i] = i;
-    vector<int> picking3 = greedyKnapsackByRatio(instance, tour3);
-    printSolution(instance, tour3, picking3, "Tour Simple + Ratio P/W");
-    
-    cout << "\n" << string(50, '=') << endl;
-    cout << "AQUÍ PUEDES AGREGAR TUS PROPIAS HEURÍSTICAS" << endl;
-    cout << string(50, '=') << endl;
-    
-    return 0;
-}
+#endif
