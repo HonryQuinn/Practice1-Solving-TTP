@@ -5,7 +5,7 @@
 #include <cstdlib>
 #include <ctime>
 
-// HEURÍSTICA 1: Tour secuencial + Sin recoger items
+// 1
 class SequentialNoItems : public TTPHeuristic {
 public:
     SequentialNoItems(const TTPInstance& inst) : TTPHeuristic(inst) {}
@@ -23,7 +23,7 @@ public:
     }
 };
 
-// HEURÍSTICA 2: Vecino más cercano + Picking greedy
+// 2
 class NearestNeighborGreedy : public TTPHeuristic {
 public:
     NearestNeighborGreedy(const TTPInstance& inst) : TTPHeuristic(inst) {}
@@ -41,7 +41,7 @@ public:
     }
 };
 
-// HEURÍSTICA 3: Tour aleatorio + Picking greedy
+// 3
 class RandomTourGreedy : public TTPHeuristic {
 public:
     RandomTourGreedy(const TTPInstance& inst) : TTPHeuristic(inst) {
@@ -61,7 +61,7 @@ public:
     }
 };
 
-// HEURÍSTICA 4: Mejora local con 2-opt en tour
+// 4
 class LocalSearch2Opt : public TTPHeuristic {
 private:
     bool improve2Opt(TTPSolution& sol) {
@@ -70,7 +70,7 @@ private:
         
         for (int i = 1; i < n - 1; i++) {
             for (int j = i + 1; j < n; j++) {
-                // Hacer swap 2-opt
+                // hacer swap 2-opt
                 reverse(sol.tour.begin() + i, sol.tour.begin() + j + 1);
                 
                 double oldObj = sol.objective;
@@ -79,7 +79,7 @@ private:
                 if (sol.objective > oldObj) {
                     improved = true;
                 } else {
-                    // Revertir si no mejoró
+                    // revertir si no mejoró
                     reverse(sol.tour.begin() + i, sol.tour.begin() + j + 1);
                     sol.objective = oldObj;
                 }
@@ -100,12 +100,10 @@ public:
         sol.tour = createNearestNeighborTour(0);
         sol.pickingPlan = createGreedyPickingPlan(sol.tour);
         evaluateSolution(sol);
-        
-        // Aplicar mejora local
+
         int iterations = 0;
         while (improve2Opt(sol) && iterations < 100) {
             iterations++;
-            // Recalcular picking plan después de cambiar tour
             sol.pickingPlan = createGreedyPickingPlan(sol.tour);
             evaluateSolution(sol);
         }
@@ -114,7 +112,7 @@ public:
     }
 };
 
-// HEURÍSTICA 5: Picking basado en profit absoluto
+// 5
 class HighProfitPicking : public TTPHeuristic {
 public:
     HighProfitPicking(const TTPInstance& inst) : TTPHeuristic(inst) {}
@@ -127,8 +125,7 @@ public:
         TTPSolution sol;
         sol.tour = createNearestNeighborTour(0);
         
-        // Crear picking plan basado en profit absoluto
-        vector<pair<int, int>> itemsByProfit; // (profit, index)
+        vector<pair<int, int>> itemsByProfit; 
         for (int i = 0; i < instance.num_items; i++) {
             itemsByProfit.push_back({instance.items[i].profit, i});
         }

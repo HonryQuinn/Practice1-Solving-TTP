@@ -9,7 +9,6 @@
 
 using namespace std;
 
-
 struct TTPSolution {
     vector<int> tour;       
     vector<int> pickingPlan;   
@@ -24,6 +23,7 @@ struct TTPSolution {
     bool isValid(const TTPInstance& inst) const {
         return weight <= inst.capacity && tour.size() == inst.dimension;
     }
+    
 };
 
 
@@ -32,8 +32,8 @@ protected:
     const TTPInstance& instance;
     
 public:
-    TTPHeuristic(const TTPInstance& inst) : instance(inst) {}
-    virtual ~TTPHeuristic() {}
+    TTPHeuristic(const TTPInstance& inst) : instance(inst) {}  //cons
+    virtual ~TTPHeuristic() {} // des
     
     virtual TTPSolution solve() = 0;
     
@@ -71,6 +71,8 @@ public:
         sol.objective = sol.profit - sol.time * instance.renting_ratio;
     }
     
+    // MAGIA
+
     vector<int> createSequentialTour() {
         vector<int> tour(instance.dimension);
         for (int i = 0; i < instance.dimension; i++) {
