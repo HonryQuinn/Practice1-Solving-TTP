@@ -20,15 +20,29 @@ int main(int argc, char* argv[]) {
     // Crear experimento
     TTPExperiment experiment(instance);
     
-    // Agregar heurísticas a probar
-    experiment.addHeuristic(new SequentialNoItems(instance));
-    experiment.addHeuristic(new NearestNeighborGreedy(instance));
-    experiment.addHeuristic(new RandomTourGreedy(instance));
-    experiment.addHeuristic(new HighProfitPicking(instance));
+    
+    // Heurística D: 2-Opt Local Search (original)
     experiment.addHeuristic(new LocalSearch2Opt(instance));
+    
+    // Nueva heurística probabilística con diferentes temperaturas
+    // Temperature = 0.3 (más determinístico, similar a NN clásico)
+    experiment.addHeuristic(new ProbabilisticNearestNeighbor2Opt(instance, 0.3));
+    
+    // Temperature = 0.5 (balance, valor por defecto)
+    experiment.addHeuristic(new ProbabilisticNearestNeighbor2Opt(instance, 0.5));
+    
+    // Temperature = 1.0 (más aleatorio, mayor exploración)
+    experiment.addHeuristic(new ProbabilisticNearestNeighbor2Opt(instance, 1.0));
+    
+    // Temperature = 2.0 (muy aleatorio, máxima exploración)
+    experiment.addHeuristic(new ProbabilisticNearestNeighbor2Opt(instance, 2.0));
+    
+    // experiment.addHeuristic(new SequentialNoItems(instance));
+    // experiment.addHeuristic(new NearestNeighborGreedy(instance));
+    // experiment.addHeuristic(new RandomTourGreedy(instance));
+    // experiment.addHeuristic(new HighProfitPicking(instance));
     
     experiment.runAll();
     
     return 0;
 }
-
