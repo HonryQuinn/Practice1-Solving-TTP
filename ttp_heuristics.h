@@ -68,9 +68,7 @@
 // };
 // */
 
-
-// HEURÍSTICA D (ACTIVA): Mejora local con 2-opt en tour
-
+// HEURÍSTICA D: Mejora local con 2-opt en tour
 class LocalSearch2Opt : public TTPHeuristic {
 private:
     bool improve2Opt(TTPSolution& sol) {
@@ -161,28 +159,7 @@ public:
 // };
 // */
 
-// ============================================================================
-// NUEVA HEURÍSTICA: Probabilistic Nearest Neighbor + 2-Opt Local Search
-// ============================================================================
-// 
-// Esta heurística mejora el Nearest Neighbor tradicional usando selección
-// probabilística basada en las distancias. En lugar de siempre elegir la
-// ciudad más cercana, hay una probabilidad controlada de elegir ciudades
-// más lejanas, lo que permite explorar diferentes regiones del espacio de
-// soluciones y potencialmente encontrar mejores tours.
-//
-// Parámetros clave:
-// - temperature: Controla la "aleatoriedad" de la selección
-//   * temperature alto (>1.0): Más probabilidad de elegir ciudades lejanas
-//   * temperature bajo (<1.0): Más determinístico (similar a NN clásico)
-//   * temperature = 0.5 (por defecto): Balance razonable
-//
-// Fórmula de probabilidad (Softmax con temperatura):
-//   probability(ciudad_i) = exp(-distance_i / temperature) / Σ(exp(-distance_j / temperature))
-//
-// Ciudades más cercanas tienen mayor probabilidad, pero las lejanas también
-// tienen chance, permitiendo escapar de óptimos locales.
-// ============================================================================
+// HEURÍSTICA F: Probabilistic Nearest Neighbor + 2-Opt Local Search
 
 class ProbabilisticNearestNeighbor2Opt : public TTPHeuristic {
 private:
@@ -307,6 +284,229 @@ public:
     
     double getTemperature() const {
         return temperature;
+    }
+};
+
+class LNS_TTP : public TTPHeuristic {
+private:
+    int destroySize;
+    int maxIterations;
+    
+    // Destruir k ciudades aleatoriamente del tour
+    vector<int> destroyTour(const vector<int>& tour, int k) {
+        vector<int> removed;
+        vector<int> partial = tour;
+        
+        for (int i = 0; i < k; i++) {
+            if (partial.size() <= 1) break;
+            int idx = 1 + rand() % (partial.size() - 1);
+            removed.push_back(partial[idx]);
+            partial.erase(partial.begin() + idx);
+        }
+        
+        return removed;
+    }
+    
+    // Reconstruir insertando ciudades en mejores posiciones
+    vector<int> reconstructTour(vector<int> partial, const vector<int>& removed) {
+        for (int city : removed) {
+            int bestPos = 1;
+            double bestCost = numeric_limits<double>::infinity();
+            
+            for (int pos = 1; pos < partial.size(); pos++) {
+                int prev = partial[pos - 1];
+                int next = partial[pos];
+                
+                double cost = instance.distances[prev][city] + 
+                             instance.distances[city][next] -
+                             instance.distances[prev][next];
+                
+                if (cost < bestCost) {
+                    bestCost = cost;
+                    bestPos = pos;
+                }
+            }
+            
+            partial.insert(partial.begin() + bestPos, city);
+        }
+        
+        return partial;
+    }
+    
+    // Mejora 2-Opt
+    bool improve2Opt(TTPSolution& sol) {
+        bool improved = false;
+        int n = sol.tour.size();
+        
+        for (int i = 1; i < n - 1; i++) {
+            for (int j = i + 1; j < n; j++) {
+                reverse(sol.tour.begin() + i, sol.tour.begin() + j + 1);
+                
+                double oldObj = sol.objective;
+                evaluateSolution(sol);
+                
+                if (sol.objective > oldObj) {
+                    improved = true;
+                } else {
+                    reverse(sol.tour.begin() + i, sol.tour.begin() + j + 1);
+                    sol.objective = oldObj;
+                }
+            }
+        }
+        return improved;
+    }
+
+public:
+    LNS_TTP(const TTPInstance& inst, int k = 10, int maxIter = 50) 
+        : TTPHeuristic(inst), destroySize(k), maxIterations(maxIter) {
+        srand(time(0));
+    }
+    
+    string getName() const override {
+        return "LNS (destroy=" + to_string(destroySize) + 
+               ", iter=" + to_string(maxIterations) + ") + 2-Opt + Greedy";
+    }
+    
+    TTPSolution solve() override {
+        // Solución inicial
+        TTPSolution best;
+        best.tour = createNearestNeighborTour(0);
+        best.pickingPlan = createGreedyPickingPlan(best.tour);
+        evaluateSolution(best);
+        
+        TTPSolution current = best;
+        
+        for (int iter = 0; iter < maxIterations; iter++) {
+            // 1. DESTRUCCIÓN
+            vector<int> removed = destroyTour(current.tour, destroySize);
+            
+            // Crear tour parcial (sin las ciudades removidas)
+            vector<int> partial = current.tour;
+            for (int city : removed) {
+                auto it = find(partial.begin(), partial.end(), city);
+                if (it != partial.end()) {
+                    partial.erase(it);
+                }
+            }
+            
+            // 2. RECONSTRUCCIÓN
+            current.tour = reconstructTour(partial, removed);
+            
+            // 3. MEJORA LOCAL con 2-Opt
+            current.pickingPlan = createGreedyPickingPlan(current.tour);
+            evaluateSolution(current);
+            
+            int localIter = 0;
+            while (improve2Opt(current) && localIter < 50) {
+                current.pickingPlan = createGreedyPickingPlan(current.tour);
+                evaluateSolution(current);
+                localIter++;
+            }
+            
+            // 4. ACEPTACIÓN
+            if (current.objective > best.objective) {
+                best = current;
+            }
+            
+            // Reiniciar desde la mejor cada cierto número de iteraciones
+            if (iter % 10 == 0) {
+                current = best;
+            }
+        }
+        
+        return best;
+    }
+};
+
+class VNS_TTP : public TTPHeuristic {
+private:
+    int maxIterations;
+    int kmax;
+    
+    // Shaking: perturbación aleatoria de tamaño k
+    void shaking(TTPSolution& sol, int k) {
+        for (int i = 0; i < k; i++) {
+            int pos1 = 1 + rand() % (sol.tour.size() - 1);
+            int pos2 = 1 + rand() % (sol.tour.size() - 1);
+            swap(sol.tour[pos1], sol.tour[pos2]);
+        }
+    }
+    
+    // Mejora 2-Opt
+    bool improve2Opt(TTPSolution& sol) {
+        bool improved = false;
+        int n = sol.tour.size();
+        
+        for (int i = 1; i < n - 1; i++) {
+            for (int j = i + 1; j < n; j++) {
+                reverse(sol.tour.begin() + i, sol.tour.begin() + j + 1);
+                
+                double oldObj = sol.objective;
+                evaluateSolution(sol);
+                
+                if (sol.objective > oldObj) {
+                    improved = true;
+                } else {
+                    reverse(sol.tour.begin() + i, sol.tour.begin() + j + 1);
+                    sol.objective = oldObj;
+                }
+            }
+        }
+        return improved;
+    }
+
+public:
+    VNS_TTP(const TTPInstance& inst, int maxIter = 100, int k_max = 5)
+        : TTPHeuristic(inst), maxIterations(maxIter), kmax(k_max) {
+        srand(time(0));
+    }
+    
+    string getName() const override {
+        return "VNS (kmax=" + to_string(kmax) + 
+               ", iter=" + to_string(maxIterations) + ") + 2-Opt + Greedy";
+    }
+    
+    TTPSolution solve() override {
+        // Solución inicial
+        TTPSolution best;
+        best.tour = createNearestNeighborTour(0);
+        best.pickingPlan = createGreedyPickingPlan(best.tour);
+        evaluateSolution(best);
+        
+        int iter = 0;
+        int k = 1;
+        
+        while (iter < maxIterations) {
+            // 1. SHAKING
+            TTPSolution current = best;
+            shaking(current, k);
+            
+            // 2. BÚSQUEDA LOCAL con 2-Opt
+            current.pickingPlan = createGreedyPickingPlan(current.tour);
+            evaluateSolution(current);
+            
+            int localIter = 0;
+            while (improve2Opt(current) && localIter < 50) {
+                current.pickingPlan = createGreedyPickingPlan(current.tour);
+                evaluateSolution(current);
+                localIter++;
+            }
+            
+            // 3. CAMBIO DE VECINDARIO
+            if (current.objective > best.objective) {
+                best = current;
+                k = 1;  // Volver al vecindario más pequeño
+            } else {
+                k++;
+                if (k > kmax) {
+                    k = 1;
+                }
+            }
+            
+            iter++;
+        }
+        
+        return best;
     }
 };
 

@@ -8,33 +8,20 @@ int main(int argc, char* argv[]) {
         return 1;
     }
     
-    // Leer instancia del problema
     TTPInstance instance;
     if (!readTTPFile(argv[1], instance)) {
         return 1;
     }
     
-    // Mostrar información de la instancia
     printInstanceInfo(instance);
     
-    // Crear experimento
     TTPExperiment experiment(instance);
     
-    
-    // Heurística D: 2-Opt Local Search (original)
     experiment.addHeuristic(new LocalSearch2Opt(instance));
     
-    // Nueva heurística probabilística con diferentes temperaturas
-    // Temperature = 0.3 (más determinístico, similar a NN clásico)
     experiment.addHeuristic(new ProbabilisticNearestNeighbor2Opt(instance, 0.3));
-    
-    // Temperature = 0.5 (balance, valor por defecto)
     experiment.addHeuristic(new ProbabilisticNearestNeighbor2Opt(instance, 0.5));
-    
-    // Temperature = 1.0 (más aleatorio, mayor exploración)
     experiment.addHeuristic(new ProbabilisticNearestNeighbor2Opt(instance, 1.0));
-    
-    // Temperature = 2.0 (muy aleatorio, máxima exploración)
     experiment.addHeuristic(new ProbabilisticNearestNeighbor2Opt(instance, 2.0));
     
     // experiment.addHeuristic(new SequentialNoItems(instance));
@@ -42,6 +29,19 @@ int main(int argc, char* argv[]) {
     // experiment.addHeuristic(new RandomTourGreedy(instance));
     // experiment.addHeuristic(new HighProfitPicking(instance));
     
+    experiment.addHeuristic(new HillClimbingPicking(instance));
+
+    experiment.addHeuristic(new LNS_TTP(instance, 5, 30));
+    experiment.addHeuristic(new LNS_TTP(instance, 10, 30)); 
+    experiment.addHeuristic(new LNS_TTP(instance, 15, 30));
+
+    experiment.addHeuristic(new VNS_TTP(instance, 50, 3));
+    experiment.addHeuristic(new VNS_TTP(instance, 50, 5)); 
+    experiment.addHeuristic(new VNS_TTP(instance, 100, 5)); 
+
+
+
+
     experiment.runAll();
     
     return 0;
