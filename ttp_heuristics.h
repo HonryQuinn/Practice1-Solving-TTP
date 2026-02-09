@@ -330,7 +330,8 @@ protected:
         else if (distanciaTotal > 45000) tourFactor = 0.7;
         else if (distanciaTotal > 40000) tourFactor = 0.8;
         
-        int capacidadObjetivo = instance.capacity * fillRatio * tourFactor;
+        // CORRECCIÓN CRÍTICA: asegurar que capacidadObjetivo nunca exceda instance.capacity
+        int capacidadObjetivo = min((int)(instance.capacity * fillRatio * tourFactor), instance.capacity);
         
         // Greedy por ratio ganancia/peso
         vector<pair<double, int>> itemRatios;
@@ -343,7 +344,9 @@ protected:
         int currentWeight = 0;
         for (auto& p : itemRatios) {
             int itemIdx = p.second;
-            if (currentWeight + instance.items[itemIdx].weight <= capacidadObjetivo) {
+            // CORRECCIÓN: doble verificación contra capacidad real
+            if (currentWeight + instance.items[itemIdx].weight <= capacidadObjetivo &&
+                currentWeight + instance.items[itemIdx].weight <= instance.capacity) {
                 pickingPlan[itemIdx] = 1;
                 currentWeight += instance.items[itemIdx].weight;
             }
@@ -356,6 +359,12 @@ protected:
     bool improvePickingWithObjective(TTPSolution& sol, int maxFlips = 50) {
         bool improved = false;
         
+        // CORRECCIÓN: Asegurar que empezamos con solución válida
+        if (!sol.isValid(instance)) {
+            evaluateSolution(sol);
+            return false;
+        }
+        
         for (int flip = 0; flip < maxFlips; flip++) {
             int bestItem = -1;
             double bestImprovement = 0;
@@ -367,7 +376,8 @@ protected:
                 
                 evaluateSolution(sol);
                 
-                if (sol.isValid(instance)) {
+                // CORRECCIÓN: Solo considerar si mejora Y es válida
+                if (sol.isValid(instance) && sol.objective > currentObj) {
                     double improvement = sol.objective - currentObj;
                     if (improvement > bestImprovement) {
                         bestImprovement = improvement;
@@ -381,13 +391,21 @@ protected:
             if (bestItem != -1) {
                 sol.pickingPlan[bestItem] = 1 - sol.pickingPlan[bestItem];
                 evaluateSolution(sol);
+                
+                // CORRECCIÓN CRÍTICA: verificar que sigue siendo válida después del cambio
+                if (!sol.isValid(instance)) {
+                    sol.pickingPlan[bestItem] = 1 - sol.pickingPlan[bestItem];
+                    evaluateSolution(sol);
+                    break;
+                }
                 improved = true;
             } else {
                 break;
             }
         }
         
-        if (improved) {
+        // CORRECCIÓN FINAL: asegurar que terminamos con solución válida
+        if (!sol.isValid(instance)) {
             evaluateSolution(sol);
         }
         

@@ -51,6 +51,12 @@ public:
             }
         }
 
+        if (sol.weight > instance.capacity) {
+            sol.objective = -1e9;  // Penalización masiva
+            sol.time = 1e9;
+            return;
+        }
+
         double nu = (instance.max_speed - instance.min_speed) / instance.capacity;
 
         int currentWeight = 0;
@@ -59,6 +65,11 @@ public:
             int to = sol.tour[(i + 1) % instance.dimension];
             
             double velocity = instance.max_speed - nu * currentWeight;
+
+            if (velocity < instance.min_speed) {
+                velocity = instance.min_speed;
+            }
+
             sol.time += instance.distances[from][to] / velocity;
             
             for (int k = 0; k < instance.num_items; k++) {
@@ -157,7 +168,7 @@ private:
                 improved = true;
             } else {
                 sol.pickingPlan[i] = 1 - sol.pickingPlan[i];
-                sol.objective = oldObj;
+                evaluateSolution(sol);
             }
         }
         return improved;
